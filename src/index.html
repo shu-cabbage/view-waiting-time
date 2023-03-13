@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>待ち時間</title>
+        <script src="/socket.io/socket.io.js"></script>
+        <style>
+            /*table{
+                border: 1px solid #000;
+                border-collapse: collapse;
+            }
+            tr, td{
+                border: 1px solid #000;
+            }*/
+            td{
+                width: 120px;
+            }
+            ul{
+                list-style: none;
+                margin: 0px;
+                padding: 0px 2px;
+            }
+            .scale0 li{
+                width: 50%;
+                float: left;
+                height: 10px;
+                position: relative;
+                padding-left: 0px;
+                box-sizing: border-box;
+            }
+            .scale0 li:after {
+                content: '';
+                width: 1px;
+                height: 5px;
+                background-color: #999;
+                position: absolute;
+            }
+            .scale0 li:last-child {
+                height: 5px;
+                border-right: 1px solid #999;
+            }
+            .scale1 {
+                display: flex;
+                width: 100%;
+            }
+            .scale1 p{
+                margin: 0px 40% 0px 0px;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>待ち時間</h1>
+        <table>
+            <tr>
+                <td></td>
+                <td class="progress_width">
+                    <progress id="scale_progress"></progress>
+                    <ul class="scale scale0">
+                        <li></li><li></li>
+                    </ul>
+                    <div class="scale scale1">
+                        <p>0</p>
+                        <p id="scale_harf_value">50</p>
+                        <p id="scale_max_value" style="margin-right: 0px;">100</p>
+                        <p style="margin: 0px;">(分)</p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <div id="store_list"></div>
+
+        <table>
+            <tr>
+                <td></td>
+                <td class="progress_width">
+                    <progress id="scale_progress1"></progress>
+                    <ul class="scale scale0">
+                        <li></li><li></li>
+                    </ul>
+                    <div class="scale scale1">
+                        <p>0</p>
+                        <p id="scale_harf_value1">50</p>
+                        <p id="scale_max_value1" style="margin-right: 0px;">100</p>
+                        <p style="margin: 0px;">(分)</p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </body>
+    <script>
+        const socket = io();
+        let max_time_data = [];
+        let max_time = 0;
+
+        function make_store_list(data){
+            const store_list = document.getElementById("store_list");
+            store_list.textContent = "";
+            max_time_data = [];
+            for(let i = 0; i < data.foods.length; i++){
+                let foods = data.foods[i].food;
+                max_time_data.push({
+                    food : data.foods[i].food,
+                    scale_time : data.foods[i].time * data.foods[i].person,
+                    sell_status : data.foods[i].sell_status,
+                });
+
+                let food_div = document.createElement("div");
+                let food_table = document.createElement("table");
+                let title_tr = document.createElement("tr");
+                let title_td = document.createElement("td");
+                title_td.textContent = foods;
+                let blank_td = document.createElement("td");
+                title_tr.appendChild(title_td);
+                title_tr.appendChild(blank_td);
+
+                let time_tr = document.createElement("tr");
+                let time_td = document.createElement("td");
+                let progress_td = document.createElement("td");
+                let time_div = document.createElement("div");
+                let time_p0 = document.createElement("p");
+                let time_p1 = document.createElement("p");
+                let time_p2 = document.createElement("p");
+                if(data.foods[i].sell_status == "soldout"){
+                    time_p1.textContent = "null";
+                    let p = document.createElement("p");
+                    p.textContent = "売り切れ";
+                    progress_td.appendChild(p);
+                }else{
+                    time_p1.textContent = data.foods[i].time * data.foods[i].person;
+                    let progress_bar = document.createElement("progress");
+                    progress_bar.id = foods + "_bar";
+                    progress_bar.value = data.foods[i].time * data.foods[i].person;
+                    progress_bar.max = 120;
+                    progress_td.appendChild(progress_bar);
+                }
+                time_p0.textContent = "待ち時間";
+                time_p1.id = foods + "_num_of_people";
+                time_p2.textContent = "分";
+                time_div.style.display = "flex";
+                time_div.appendChild(time_p0);
+                time_div.appendChild(time_p1);
+                time_div.appendChild(time_p2);
+                time_td.appendChild(time_div);
+                time_tr.appendChild(time_td);
+                time_tr.appendChild(progress_td);
+
+                food_table.appendChild(title_tr);
+                food_table.appendChild(time_tr);
+                food_div.appendChild(food_table);
+                store_list.appendChild(food_div);
+            }
+        }
+
+        async function doAjaxThings(){
+            let result = await makeRequest("GET", "./foods.json");
+            make_store_list(result);
+            sort_maximum();
+        }
+
+        function makeRequest(method, url){
+            return new Promise(function (resolve, reject){
+                let xhr = new XMLHttpRequest();
+                xhr.open(method, url);
+                xhr.onload = function (){
+                    if(this.status >= 200 && this.status < 300){
+                        resolve(JSON.parse(xhr.response));
+                    }else{
+                        reject({
+                            status: this.status,
+                            statusText: xhr.statusText
+                        });
+                    }
+                }
+                xhr.onerror = function (){
+                    reject({
+                        status: this.status,
+                        statusText: this.statusText
+                    });
+                }
+                xhr.send();
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", function(){
+            doAjaxThings();
+        });
+
+        socket.on("add_after_reload", () => {
+            doAjaxThings();
+        });
+
+        socket.on("reload", () => {
+            doAjaxThings();
+        });
+
+        socket.on("waiting_time", (data) => {
+            let food = data.food;
+            const num_of_people = document.getElementById(food + "_num_of_people");
+            num_of_people.textContent = data.time;
+
+            for(let i = 0; i < max_time_data.length; i++){
+                if(max_time_data[i].food == food){
+                    //if(max_time_data[i].scale_time < data.time){
+                        max_time_data[i].scale_time = data.time;
+                    //}
+                    
+                }
+            }
+
+            sort_maximum();
+            const time_bar = document.getElementById(food + "_bar");
+            time_bar.value = data.time;
+        });
+
+        function sort_maximum(){
+            max_time = 0;
+            let val = 0;
+            for(let i = 0; i < max_time_data.length; i++){
+                if(max_time_data[i].sell_status !== "soldout"){
+                    let buff = max_time_data[i].scale_time;
+                    if(buff > max_time){
+                        max_time = buff;
+                    }
+                }else{
+                    val++;
+                }
+            }
+            if(val == max_time_data.length || max_time < 120){
+                max_time = 90;
+            }
+            const progress_detail = document.querySelectorAll("progress");
+            progress_detail.forEach((data) => {
+                data.max = max_time + 30;
+            });
+            document.getElementById("scale_progress").max = max_time;
+            document.getElementById("scale_progress").value = document.getElementById("scale_progress1").value = max_time + 30;
+            document.getElementById("scale_harf_value").textContent = document.getElementById("scale_harf_value1").textContent = (max_time + 30)/2;
+            document.getElementById("scale_max_value").textContent = document.getElementById("scale_max_value1").textContent = max_time + 30;
+        }
+    </script>
+</html>
